@@ -239,12 +239,16 @@ This section explains how AI was used to make this project.
 - Claude also ran the app in a headless browser to test it, found two bugs (login failing where the browser's hashing feature is missing, and a syntax error in one patch), and fixed them.
 - Claude wrote the two follow-up commits: the "progress summary" rule in `mockReply()` (commit `feat(assistant)`) and XP per finished task by priority (commit `feat(gamification)`). The git history shows each change separately.
 - Claude wrote this README.
-**Is there AI inside the app? No.** The features named "AI" are simple rule-based code, not a real AI model:
+
+**Is there AI inside the app? No.** 
+The features named "AI" are simple rule-based code, not a real AI model:
 - `mockReply()` in `script.js` picks a prepared answer by looking for keywords in the question. `askAI()` is the single place where a real AI API could be connected later.
 - `summarize()` scores sentences by how often their words appear and returns the top three.
 - `makeQuiz()` builds fill-in-the-blank questions from the user's own notes, or uses generic study-skill questions.
 **Known limits**
 - Accounts and passwords are stored in the browser (passwords are hashed, but this is not secure enough for a real website; a server-side login is needed).
 - Data does not sync between devices.
-**What I did myself:** _[Add here what you personally wrote, changed, tested or learned, so this section is accurate.]_
+- 
+**What I did myself:**
+   _[Add here what you personally wrote, changed, tested or learned, so this section is accurate.]_
  
