@@ -4,10 +4,7 @@
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const SINGLE = !!document.body.dataset.single; /* single-file mode uses #hash pages */
-let P = SINGLE ? (location.hash.slice(1) || 'login') : document.body.dataset.page;
-const href = p => SINGLE ? '#' + p : (p === 'login' ? 'index' : p) + '.html';
-const go = p => { if (SINGLE) location.hash = '#' + p; else location.href = href(p); };
+const P = document.body.dataset.page;
 const ymd = d => { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const addD = (s, n) => { const d = new Date(s + 'T00:00'); d.setDate(d.getDate() + n); return ymd(d); };
 const daysTo = s => Math.round((new Date(s + 'T00:00') - new Date(ymd() + 'T00:00')) / 864e5);
@@ -17,14 +14,11 @@ const mins = t => { const [a, b] = t.split(':'); return +a * 60 + +b; };
 const hm = m => String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 const shuf = a => a.map(x => [Math.random(), x]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
-const sha = async t => { try { if (window.crypto && crypto.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) {} let h = 5381; for (const c of 'sm:' + t) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return 'x' + h.toString(16); };
+const sha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
 function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 2600); }
 function setTheme(t) { document.documentElement.dataset.theme = t; localStorage.setItem('sm_theme', t); }
 setTheme(localStorage.getItem('sm_theme') || 'light');
 function modal(html, mount) { const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="mbox">' + html + '</div>'; m.onclick = e => { if (e.target === m) m.remove(); }; document.body.append(m); mount(m); }
-
-const ok = msg => new Promise(res => modal(`<h3>${esc(msg)}</h3><div class="row"><button class="btn ghost" data-n>Cancel</button><button class="btn" data-y>Yes</button></div>`, m => { $('[data-n]', m).onclick = () => { m.remove(); res(false); }; $('[data-y]', m).onclick = () => { m.remove(); res(true); }; }));
-window.addEventListener('error', e => toast('Something went wrong: ' + e.message));
 
 /* ---------- state ---------- */
 let email, S, users;
@@ -83,12 +77,12 @@ function authPage() {
     <button class="btn big">${L ? 'Log in' : 'Create account'}</button><p class="mut">${L ? 'New here?' : 'Have an account?'} <a href="#" id="sw">${L ? 'Create account' : 'Log in'}</a></p><button type="button" class="btn ghost" id="th">🌓 Light / dark</button></form></div>`;
     $('#sw').onclick = e => { e.preventDefault(); mode = L ? 'signup' : 'login'; draw(); };
     $('#th').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-    if (L) $('#fp').onclick = e => {
-      e.preventDefault();
-      modal(`<h3>Reset password</h3><form id="rf"><label>Account email<input type="email" id="re" required></label><label>New password<input type="password" id="rp" minlength="6" required></label><div class="row"><button type="button" class="btn ghost" data-x>Cancel</button><button class="btn">Update</button></div></form>`, m => {
-        $('[data-x]', m).onclick = () => m.remove();
-        $('#rf', m).onsubmit = async ev => { ev.preventDefault(); const em = $('#re').value.trim().toLowerCase(); if (!users[em]) return toast('No account found for that email'); users[em].pw = await sha($('#rp').value); localStorage.setItem('sm_users', JSON.stringify(users)); m.remove(); toast('Password updated. You can log in now.'); };
-      });
+    if (L) $('#fp').onclick = async e => {
+      e.preventDefault(); const em = (prompt('Enter your account email') || '').trim().toLowerCase();
+      if (!users[em]) return toast('No account found for that email');
+      const np = prompt('Choose a new password (6+ characters)');
+      if (!np || np.length < 6) return toast('Password not changed');
+      users[em].pw = await sha(np); localStorage.setItem('sm_users', JSON.stringify(users)); toast('Password updated. You can log in now.');
     };
     $('#af').onsubmit = async e => {
       e.preventDefault(); const em = $('#ae').value.trim().toLowerCase(), pw = await sha($('#ap').value);
@@ -96,7 +90,7 @@ function authPage() {
       else { if (users[em]) return toast('An account with this email already exists'); users[em] = { name: $('#an').value.trim(), pw }; localStorage.setItem('sm_users', JSON.stringify(users)); }
       (sessionStorage).removeItem('sm_sess'); localStorage.removeItem('sm_sess');
       ($('#ar').checked ? localStorage : sessionStorage).setItem('sm_sess', em);
-      go('dashboard');
+      location.href = 'dashboard.html';
     };
   };
   draw();
@@ -104,20 +98,17 @@ function authPage() {
 
 /* ---------- app shell ---------- */
 function boot() {
-  try { localStorage.setItem('sm_t', '1'); } catch (e) { $('#app').innerHTML = '<div style="padding:40px;max-width:520px;margin:auto"><h2>Storage is blocked</h2><p>StudyMate saves your data in the browser. Open this page in Chrome or Safari (not inside a preview or a private window) and try again.</p></div>'; return; }
-  if (SINGLE && P !== 'login' && !PAGES[P]) P = 'dashboard';
   users = JSON.parse(localStorage.getItem('sm_users') || '{}');
   email = localStorage.getItem('sm_sess') || sessionStorage.getItem('sm_sess');
-  if (P === 'login') { if (email && users[email]) return go('dashboard'); return authPage(); }
-  if (!email || !users[email]) return go('login');
+  if (P === 'login') { if (email && users[email]) return location.replace('dashboard.html'); return authPage(); }
+  if (!email || !users[email]) return location.replace('index.html');
   S = JSON.parse(localStorage.getItem('sm_d_' + email) || 'null') || fresh(); save();
   render();
 }
 function render() {
-  if (P !== 'focus' && FT.iv) { clearInterval(FT.iv); FT = { mode: 'focus', left: 1500, run: false, iv: null, end: 0 }; }
   const nav = NAV.find(n => n[0] === P), al = alerts();
   document.title = nav[2] + ' · StudyMate AI';
-  $('#app').innerHTML = `<aside class="side" id="side"><div class="logo">🎓 StudyMate <b>AI</b></div>${NAV.map(n => `<a href="${href(n[0])}" class="${n[0] === P ? 'on' : ''}"><span>${n[1]}</span>${n[2]}</a>`).join('')}<div class="lvl">Level ${lvl()} · ${S.xp} XP<div class="pb"><i style="width:${S.xp % 200 / 2}%"></i></div></div></aside>
+  $('#app').innerHTML = `<aside class="side" id="side"><div class="logo">🎓 StudyMate <b>AI</b></div>${NAV.map(n => `<a href="${n[0]}.html" class="${n[0] === P ? 'on' : ''}"><span>${n[1]}</span>${n[2]}</a>`).join('')}<div class="lvl">Level ${lvl()} · ${S.xp} XP<div class="pb"><i style="width:${S.xp % 200 / 2}%"></i></div></div></aside>
   <div class="main"><header class="top"><button class="ic burger" id="bg" aria-label="Menu">☰</button><div class="tt"><h1>${nav[1]} ${nav[2]}</h1><small>${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</small></div>
   <div class="tr"><button class="ic" id="bell" aria-label="Notifications">🔔${al.length ? `<i id="bc">${al.length}</i>` : ''}</button><button class="ic" id="th" aria-label="Toggle dark mode">🌓</button><div class="av">${esc((users[email].name[0] || '?').toUpperCase())}</div></div></header>
   <div class="nd" id="nd" hidden>${al.length ? al.map(a => `<p>${esc(a)}</p>`).join('') : '<p class="mut">You are all caught up 🎉</p>'}</div><section class="view" id="view"></section></div>`;
@@ -156,9 +147,9 @@ function pDash(v) {
   v.innerHTML = `<div class="card hero g"><div><h2>Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, ${esc(users[email].name.split(' ')[0])} 👋</h2><p class="quote">“${QUOTES[doy % QUOTES.length]}”</p></div><div class="row"><button class="btn amb" id="at">＋ Add Task</button><button class="btn" id="fs">▶ Start Focus Session</button></div></div>
   <div class="g g4"><div class="card stat"><span>Today's study hours</span><b>${hrs(t).toFixed(1)}h</b><small>Goal ${S.set.goal}h</small></div><div class="card stat"><span>Tasks completed</span><b>${done}/${S.tasks.length}</b><small>${td.filter(x => x.done).length}/${td.length} today</small></div><div class="card stat"><span>Study streak</span><b>🔥 ${streak()}</b><small>days in a row</small></div><div class="card stat"><span>Level ${lvl()}</span><b>${S.xp} XP</b><small>${200 - S.xp % 200} XP to next level</small></div></div>
   <div class="g g2"><div class="card rec"><h3>💡 Smart recommendation</h3><p>${recommend()}</p></div><div class="card"><h3>Upcoming study sessions</h3>${up.map(x => taskRow(x, true)).join('') || '<p class="mut">Nothing scheduled. Add a task or generate a plan.</p>'}</div></div>
-  <div class="g g2"><div class="card"><h3>Today's timetable</h3>${td.map(x => taskRow(x)).join('') || '<p class="mut">No sessions today. <a href="${href('planner')}">Generate a study plan</a>.</p>'}</div><div class="card"><h3>Study hours - last 7 days</h3>${bars(hv, days.map(dow), Math.max(S.set.goal, ...hv, 1))}</div></div>
+  <div class="g g2"><div class="card"><h3>Today's timetable</h3>${td.map(x => taskRow(x)).join('') || '<p class="mut">No sessions today. <a href="planner.html">Generate a study plan</a>.</p>'}</div><div class="card"><h3>Study hours - last 7 days</h3>${bars(hv, days.map(dow), Math.max(S.set.goal, ...hv, 1))}</div></div>
   <h3 style="margin:6px 0 12px">Exam countdown</h3><div class="g g4">${ex.map(s => `<div class="card cd"><b>${daysTo(s.exam)}</b>days until<br><strong>${esc(s.name)}</strong><br><small>${s.exam}</small></div>`).join('') || '<p class="mut">Add exam dates in Subjects to see countdowns.</p>'}</div>`;
-  $('#at', v).onclick = addTask; $('#fs', v).onclick = () => go('focus'); bindChecks(v);
+  $('#at', v).onclick = addTask; $('#fs', v).onclick = () => location.href = 'focus.html'; bindChecks(v);
 }
 
 function generate(f) {
@@ -186,7 +177,7 @@ function pPlan(v) {
     generate({ subs, exam: f.exam, hours: Math.min(8, Math.max(1, +f.hours || 2)), diff: f.diff, pref: f.pref, weak: f.weak }); toast('Study plan ready 🎉'); render();
   };
   $('#mt', v).onclick = addTask;
-  $('#cl', v).onclick = async () => { if (await ok('Remove all upcoming unfinished tasks?')) { S.tasks = S.tasks.filter(x => x.done || x.date < ymd()); save(); render(); } };
+  $('#cl', v).onclick = () => { if (confirm('Remove all upcoming unfinished tasks?')) { S.tasks = S.tasks.filter(x => x.done || x.date < ymd()); save(); render(); } };
   $$('[data-del]', v).forEach(b => b.onclick = () => { S.tasks = S.tasks.filter(x => x.id !== b.dataset.del); save(); render(); });
   bindChecks(v);
 }
@@ -204,7 +195,7 @@ function pSubjects(v) {
   $$('input[data-s]', v).forEach(c => c.onchange = () => { S.subjects.find(s => s.id === c.dataset.s).topics[+c.dataset.t].done = c.checked; save(); render(); });
   $$('[data-rt]', v).forEach(b => b.onclick = () => { const [id, i] = b.dataset.rt.split(':'); S.subjects.find(s => s.id === id).topics.splice(+i, 1); save(); render(); });
   $$('[data-at]', v).forEach(i => i.onkeydown = e => { if (e.key === 'Enter' && i.value.trim()) { S.subjects.find(s => s.id === i.dataset.at).topics.push({ n: i.value.trim(), done: false }); save(); render(); } });
-  $$('[data-ds]', v).forEach(b => b.onclick = async () => { if (await ok('Delete this subject?')) { S.subjects = S.subjects.filter(s => s.id !== b.dataset.ds); save(); render(); } });
+  $$('[data-ds]', v).forEach(b => b.onclick = () => { if (confirm('Delete this subject?')) { S.subjects = S.subjects.filter(s => s.id !== b.dataset.ds); save(); render(); } });
 }
 
 /* Summarizer: picks the highest-scoring sentences. Swap for a real AI API call later. */
@@ -227,7 +218,7 @@ function pNotes(v) {
   if (n) {
     $('#sv', v).onclick = () => { keep(); toast('Note saved'); pNotes(v); };
     $('#sm', v).onclick = () => { keep(); n.summary = summarize(n.body); save(); pNotes(v); };
-    $('#dn', v).onclick = async () => { if (await ok('Delete this note?')) { S.notes = S.notes.filter(x => x.id !== n.id); curN = null; save(); pNotes(v); } };
+    $('#dn', v).onclick = () => { if (confirm('Delete this note?')) { S.notes = S.notes.filter(x => x.id !== n.id); curN = null; save(); pNotes(v); } };
   }
 }
 
@@ -347,10 +338,9 @@ function pSet(v) {
   $('#sd').onchange = e => setTheme(e.target.checked ? 'dark' : 'light');
   $('#ss').onclick = () => { users[email].name = $('#sn').value.trim() || users[email].name; localStorage.setItem('sm_users', JSON.stringify(users)); S.set.goal = Math.max(1, +$('#sg').value || 3); S.set.notif = $('#sno').checked; save(); toast('Settings saved'); render(); };
   $('#ex').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })); a.download = 'studymate-data.json'; a.click(); };
-  $('#rd').onclick = async () => { if (await ok('Delete all your subjects, tasks, notes and progress?')) { S = fresh(); save(); toast('Data reset'); render(); } };
-  $('#lo').onclick = () => { localStorage.removeItem('sm_sess'); sessionStorage.removeItem('sm_sess'); go('login'); };
+  $('#rd').onclick = () => { if (confirm('Delete all your subjects, tasks, notes and progress?')) { S = fresh(); save(); toast('Data reset'); render(); } };
+  $('#lo').onclick = () => { localStorage.removeItem('sm_sess'); sessionStorage.removeItem('sm_sess'); location.href = 'index.html'; };
 }
 
 const PAGES = { dashboard: pDash, planner: pPlan, subjects: pSubjects, notes: pNotes, quiz: pQuiz, assistant: pAssist, progress: pProg, focus: pFocus, settings: pSet };
-if (SINGLE) addEventListener('hashchange', () => { P = location.hash.slice(1) || 'login'; boot(); });
 boot();
