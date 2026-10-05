@@ -32,7 +32,7 @@ function modal(html, mount) { const m = document.createElement('div'); m.classNa
 
 /* ---------- state ---------- */
 let email, S, users, userId;
-const NAV = [['dashboard', '🏠', 'Dashboard'], ['planner', '📅', 'Study Planner'], ['subjects', '📚', 'Subjects'], ['notes', '📝', 'Notes'], ['quiz', '🧠', 'AI Quiz'], ['assistant', '🤖', 'AI Assistant'], ['progress', '📊', 'Progress'], ['focus', '⏱️', 'Focus Mode'], ['settings', '⚙️', 'Settings']];
+const NAV = [['dashboard', '🏠', 'Dashboard'], ['classes', '📖', 'Class Notes & PYQs'], ['planner', '📅', 'Study Planner'], ['subjects', '📚', 'Subjects'], ['notes', '📝', 'Notes'], ['quiz', '🧠', 'AI Quiz'], ['assistant', '🤖', 'AI Assistant'], ['progress', '📊', 'Progress'], ['focus', '⏱️', 'Focus Mode'], ['settings', '⚙️', 'Settings']];
 const fresh = () => ({ subjects: [], tasks: [], notes: [], quizzes: [], focus: {}, xp: 0, chat: [], set: { goal: 3, notif: true } });
 const save = () => {};
 
@@ -747,5 +747,193 @@ function pSet(v) {
   $('#lo').onclick = () => { localStorage.removeItem('sm_token'); sessionStorage.removeItem('sm_token'); location.href = 'index.html'; };
 }
 
-const PAGES = { dashboard: pDash, planner: pPlan, subjects: pSubjects, notes: pNotes, quiz: pQuiz, assistant: pAssist, progress: pProg, focus: pFocus, settings: pSet };
+let clsTab = 'notes', clsClass = 'all', clsSub = 'all', clsQ = '', curClsNote = null, curPyq = null, ALL_PYQS = [];
+
+async function loadPyqs() {
+  if (ALL_PYQS.length) return ALL_PYQS;
+  try {
+    const res = await fetch('data/pyqs.json');
+    ALL_PYQS = await res.json();
+  } catch (e) {
+    console.error('Failed to load PYQs:', e);
+  }
+  return ALL_PYQS;
+}
+
+async function pClasses(v) {
+  await Promise.all([loadCurriculum(), loadPyqs()]);
+
+  const isNotes = clsTab === 'notes';
+
+  // Available classes based on tab
+  const availableClasses = isNotes ? [5,6,7,8,9,10,11,12] : [9,10,11,12];
+  if (!isNotes && clsClass !== 'all' && Number(clsClass) < 9) {
+    clsClass = 'all';
+  }
+
+  // Filter items
+  let filteredItems = [];
+  let subs = [];
+
+  if (isNotes) {
+    subs = ['all', ...new Set(LIB_NOTES.map(n => n.subject))];
+    filteredItems = LIB_NOTES.filter(n => {
+      const matchC = clsClass === 'all' || String(n.classNum) === String(clsClass);
+      const matchS = clsSub === 'all' || n.subject.toLowerCase() === clsSub.toLowerCase();
+      const matchQ = !clsQ || (n.title + ' ' + n.summary + ' ' + n.content).toLowerCase().includes(clsQ.toLowerCase());
+      return matchC && matchS && matchQ;
+    });
+    if (!filteredItems.some(x => x.id === curClsNote) && filteredItems.length) {
+      curClsNote = filteredItems[0].id;
+    }
+  } else {
+    subs = ['all', ...new Set(ALL_PYQS.map(p => p.subject))];
+    filteredItems = ALL_PYQS.filter(p => {
+      const matchC = clsClass === 'all' || String(p.classNum) === String(clsClass);
+      const matchS = clsSub === 'all' || p.subject.toLowerCase() === clsSub.toLowerCase();
+      const matchQ = !clsQ || (p.title + ' ' + p.description + ' ' + p.exam).toLowerCase().includes(clsQ.toLowerCase());
+      return matchC && matchS && matchQ;
+    });
+    if (!filteredItems.some(x => x.id === curPyq) && filteredItems.length) {
+      curPyq = filteredItems[0].id;
+    }
+  }
+
+  const activeNote = isNotes ? filteredItems.find(x => x.id === curClsNote) : null;
+  const activePyq = !isNotes ? filteredItems.find(x => x.id === curPyq) : null;
+
+  v.innerHTML = `
+    <div class="row" style="margin-bottom:16px;justify-content:space-between;align-items:center">
+      <div style="display:flex;gap:8px">
+        <button class="btn ${isNotes ? '' : 'ghost'}" id="tb-notes">📚 Class 5-12 Notes</button>
+        <button class="btn ${!isNotes ? '' : 'ghost'}" id="tb-pyqs">🎯 Previous Year Questions (Class 9-12)</button>
+      </div>
+      <small class="mut">${isNotes ? 'Complete revision notes from Class 5 to 12' : 'Board and final exam questions with complete solutions'}</small>
+    </div>
+
+    <div class="split">
+      <div class="card">
+        <div class="row">
+          <input id="cq" placeholder="${isNotes ? '🔍 Search notes, topics, formulas...' : '🔍 Search PYQs, exams, questions...'}" value="${esc(clsQ)}" style="flex:1">
+        </div>
+        <div class="row" style="gap:6px;margin:8px 0">
+          <select id="cc" style="flex:1">
+            <option value="all" ${clsClass === 'all' ? 'selected' : ''}>${isNotes ? 'All Classes (5-12)' : 'All Classes (9-12)'}</option>
+            ${availableClasses.map(c => `<option value="${c}" ${String(clsClass) === String(c) ? 'selected' : ''}>Class ${c}</option>`).join('')}
+          </select>
+          <select id="cs" style="flex:1">
+            ${subs.map(s => `<option value="${s}" ${clsSub === s ? 'selected' : ''}>${s === 'all' ? 'All Subjects' : esc(s)}</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="max-height:65vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px">
+          ${isNotes ? (
+            filteredItems.map(x => `
+              <a class="ni ${x.id === curClsNote ? 'on' : ''}" data-nid="${x.id}">
+                <b>Class ${x.classNum} · ${esc(x.subject)}</b>
+                <span>${esc(x.title)}</span>
+                <small>${esc(x.summary)}</small>
+              </a>
+            `).join('') || '<p class="mut">No class notes found matching filters.</p>'
+          ) : (
+            filteredItems.map(x => `
+              <a class="ni ${x.id === curPyq ? 'on' : ''}" data-pid="${x.id}">
+                <b>Class ${x.classNum} · ${esc(x.subject)} (${x.year})</b>
+                <span>${esc(x.title)}</span>
+                <small>${esc(x.exam)} · ${x.questions.length} questions</small>
+              </a>
+            `).join('') || '<p class="mut">No PYQ papers found matching filters.</p>'
+          )}
+        </div>
+      </div>
+
+      <div class="card">
+        ${isNotes && activeNote ? `
+          <div class="row" style="justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px">
+            <div>
+              <span class="pill Medium">Class ${activeNote.classNum}</span>
+              <span class="pill Easy" style="margin-left:6px">${esc(activeNote.subject)}</span>
+              <h2 style="font-size:20px;margin-top:6px">${esc(activeNote.title)}</h2>
+            </div>
+            <div class="row" style="gap:8px">
+              <button class="btn sm" id="btn-dl-note">⬇ Download Notes (.md)</button>
+              <button class="btn sm amb" id="btn-imp-note">＋ Save to My Notes</button>
+            </div>
+          </div>
+          <div style="white-space:pre-wrap;line-height:1.75;margin-top:14px;max-height:68vh;overflow-y:auto;padding-right:8px;font-family:inherit">
+            ${esc(activeNote.content).replace(/^# (.*$)/gim, '<h2 style="margin:16px 0 8px;color:var(--pri)">$1</h2>').replace(/^## (.*$)/gim, '<h3 style="margin:14px 0 6px">$1</h3>').replace(/^### (.*$)/gim, '<h4 style="margin:10px 0 4px">$1</h4>').replace(/\*\*(.*?)\*\*/gim, '<b>$1</b>').replace(/\*(.*?)\*/gim, '<i>$1</i>')}
+          </div>
+        ` : !isNotes && activePyq ? `
+          <div class="row" style="justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px">
+            <div>
+              <span class="pill High">Class ${activePyq.classNum}</span>
+              <span class="pill Easy" style="margin-left:6px">${esc(activePyq.subject)}</span>
+              <span class="pill Medium" style="margin-left:6px">${esc(activePyq.year)}</span>
+              <h2 style="font-size:20px;margin-top:6px">${esc(activePyq.title)}</h2>
+              <small class="mut">${esc(activePyq.exam)} — ${esc(activePyq.description)}</small>
+            </div>
+            <div class="row" style="gap:8px">
+              <button class="btn sm" id="btn-dl-pyq">⬇ Download Paper (.md)</button>
+            </div>
+          </div>
+          <div style="margin-top:16px;max-height:68vh;overflow-y:auto;padding-right:6px">
+            ${activePyq.questions.map((q, idx) => `
+              <div style="background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px">
+                <div class="row" style="justify-content:space-between;margin-bottom:8px">
+                  <b style="color:var(--pri)">Question ${q.qNum}</b>
+                  <span class="pill Medium">${q.marks} Marks</span>
+                </div>
+                <p style="font-size:15px;font-weight:700;margin:0 0 12px">${esc(q.question)}</p>
+                <div style="background:var(--card);border-left:4px solid var(--pri);border-radius:6px;padding:12px 14px;margin-top:8px">
+                  <b style="display:block;margin-bottom:4px;color:var(--ink)">💡 Step-by-Step Solution:</b>
+                  <div style="line-height:1.6;color:var(--ink)">${esc(q.solution)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p class="mut">Select an item from the left panel.</p>'}
+      </div>
+    </div>
+  `;
+
+  $('#tb-notes', v).onclick = () => { clsTab = 'notes'; clsQ = ''; clsClass = 'all'; pClasses(v); };
+  $('#tb-pyqs', v).onclick = () => { clsTab = 'pyqs'; clsQ = ''; clsClass = 'all'; pClasses(v); };
+  $('#cc', v).onchange = e => { clsClass = e.target.value; pClasses(v); };
+  $('#cs', v).onchange = e => { clsSub = e.target.value; pClasses(v); };
+  $('#cq', v).oninput = e => { clsQ = e.target.value; pClasses(v); const s = $('#cq'); s.focus(); s.setSelectionRange(clsQ.length, clsQ.length); };
+
+  if (isNotes) {
+    $$('[data-nid]', v).forEach(a => a.onclick = () => { curClsNote = a.dataset.nid; pClasses(v); });
+    if (activeNote) {
+      $('#btn-dl-note', v).onclick = () => downloadNote(`[Class_${activeNote.classNum}]_${activeNote.title}`, activeNote.content);
+      $('#btn-imp-note', v).onclick = async () => {
+        try {
+          const res = await api('/notes', 'POST', {
+            title: `[Class ${activeNote.classNum}] ${activeNote.title}`,
+            subject: activeNote.subject,
+            body: activeNote.content,
+            summary: activeNote.summary
+          });
+          S.notes.unshift(res);
+          await addXP(10, 'curriculum note imported');
+          toast('Saved to your personal notes!');
+        } catch(e) {
+          toast('Error importing note: ' + e.message);
+        }
+      };
+    }
+  } else {
+    $$('[data-pid]', v).forEach(a => a.onclick = () => { curPyq = a.dataset.pid; pClasses(v); });
+    if (activePyq) {
+      $('#btn-dl-pyq', v).onclick = () => {
+        const doc = `# Class ${activePyq.classNum} ${activePyq.subject} PYQ (${activePyq.year})\n**Exam:** ${activePyq.exam}\n**Description:** ${activePyq.description}\n\n` +
+          activePyq.questions.map(q => `## Question ${q.qNum} (${q.marks} Marks)\n${q.question}\n\n### Solution:\n${q.solution}\n`).join('\n---\n\n');
+        downloadNote(`[Class_${activePyq.classNum}_PYQ]_${activePyq.subject}_${activePyq.year}`, doc);
+      };
+    }
+  }
+}
+
+const PAGES = { dashboard: pDash, classes: pClasses, planner: pPlan, subjects: pSubjects, notes: pNotes, quiz: pQuiz, assistant: pAssist, progress: pProg, focus: pFocus, settings: pSet };
 boot();
+
