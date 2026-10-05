@@ -392,11 +392,171 @@ function summarize(t) {
   (t.toLowerCase().match(/[a-z']+/g) || []).forEach(w => { if (!stop.has(w) && w.length > 2) f[w] = (f[w] || 0) + 1; });
   return s.map((x, i) => ({ x: x.trim(), i, v: (x.toLowerCase().match(/[a-z']+/g) || []).reduce((a, w) => a + (f[w] || 0), 0) / Math.sqrt(x.length) })).sort((a, b) => b.v - a.v).slice(0, 3).sort((a, b) => a.i - b.i).map(o => o.x).join(' ');
 }
-let curN = null, nq = '', nf = '';
-function pNotes(v) {
+let curN = null, nq = '', nf = '', noteTab = 'library', libClass = 'all', libSub = 'all', LIB_NOTES = [];
+
+async function loadCurriculum() {
+  if (LIB_NOTES.length) return LIB_NOTES;
+  try {
+    const res = await fetch('data/curriculum-notes.json');
+    LIB_NOTES = await res.json();
+  } catch (e) {
+    console.error('Failed to load curriculum notes:', e);
+  }
+  return LIB_NOTES;
+}
+
+function downloadNote(title, content) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'StudyMate_Notes') + '.md';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Downloaded: ' + a.download);
+}
+
+async function pNotes(v) {
+  await loadCurriculum();
+
+  if (noteTab === 'library') {
+    const filteredLib = LIB_NOTES.filter(n => {
+      const matchClass = libClass === 'all' || String(n.classNum) === String(libClass);
+      const matchSub = libSub === 'all' || n.subject.toLowerCase() === libSub.toLowerCase();
+      const matchQ = !nq || (n.title + ' ' + n.summary + ' ' + n.content).toLowerCase().includes(nq.toLowerCase());
+      return matchClass && matchSub && matchQ;
+    });
+
+    const activeItem = filteredLib.find(n => n.id === curN) || filteredLib[0] || null;
+    if (activeItem && curN !== activeItem.id && !filteredLib.some(n => n.id === curN)) {
+      curN = activeItem.id;
+    }
+
+    const subs = ['all', ...new Set(LIB_NOTES.map(n => n.subject))];
+
+    v.innerHTML = `
+      <div class="row" style="margin-bottom:14px;gap:10px">
+        <div style="display:flex;gap:6px">
+          <button class="btn ${noteTab === 'library' ? '' : 'ghost'}" id="t-lib">📚 Classes 5-12 Study Notes</button>
+          <button class="btn ${noteTab === 'my' ? '' : 'ghost'}" id="t-my">📝 My Personal Notes</button>
+        </div>
+      </div>
+      <div class="split">
+        <div class="card">
+          <div class="row" style="gap:8px">
+            <input id="ns" placeholder="🔍 Search curriculum notes..." value="${esc(nq)}" style="flex:1">
+          </div>
+          <div class="row" style="gap:6px;margin:6px 0">
+            <select id="cf" style="flex:1">
+              <option value="all" ${libClass === 'all' ? 'selected' : ''}>All Classes (5-12)</option>
+              ${[5,6,7,8,9,10,11,12].map(c => `<option value="${c}" ${String(libClass) === String(c) ? 'selected' : ''}>Class ${c}</option>`).join('')}
+            </select>
+            <select id="sf" style="flex:1">
+              ${subs.map(s => `<option value="${s}" ${libSub === s ? 'selected' : ''}>${s === 'all' ? 'All Subjects' : esc(s)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="max-height:65vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+            ${filteredLib.map(x => `
+              <a class="ni ${x.id === curN ? 'on' : ''}" data-id="${x.id}">
+                <b>Class ${x.classNum} · ${esc(x.subject)}</b>
+                <span>${esc(x.title)}</span>
+                <small>${esc(x.summary)}</small>
+              </a>
+            `).join('') || '<p class="mut">No study notes match your filter.</p>'}
+          </div>
+        </div>
+
+        <div class="card">
+          ${activeItem ? `
+            <div class="row" style="justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px">
+              <div>
+                <span class="pill Medium">Class ${activeItem.classNum}</span>
+                <span class="pill Easy" style="margin-left:6px">${esc(activeItem.subject)}</span>
+                <h2 style="font-size:20px;margin-top:6px">${esc(activeItem.title)}</h2>
+              </div>
+              <div class="row" style="gap:8px">
+                <button class="btn sm" id="dn-dl">⬇ Download Note (.md)</button>
+                <button class="btn sm amb" id="dn-cp">＋ Save to My Notes</button>
+              </div>
+            </div>
+            <div style="white-space:pre-wrap;line-height:1.7;margin-top:14px;max-height:68vh;overflow-y:auto;padding-right:8px;font-family:inherit">
+              ${esc(activeItem.content).replace(/^# (.*$)/gim, '<h2 style="margin:16px 0 8px;color:var(--pri)">$1</h2>').replace(/^## (.*$)/gim, '<h3 style="margin:14px 0 6px">$1</h3>').replace(/^### (.*$)/gim, '<h4 style="margin:10px 0 4px">$1</h4>').replace(/\*\*(.*?)\*\*/gim, '<b>$1</b>').replace(/\*(.*?)\*/gim, '<i>$1</i>')}
+            </div>
+          ` : '<p class="mut">Select a class or subject from the left panel.</p>'}
+        </div>
+      </div>
+    `;
+
+    $('#t-lib', v).onclick = () => { noteTab = 'library'; pNotes(v); };
+    $('#t-my', v).onclick = () => { noteTab = 'my'; curN = null; nq = ''; pNotes(v); };
+    $('#cf', v).onchange = e => { libClass = e.target.value; pNotes(v); };
+    $('#sf', v).onchange = e => { libSub = e.target.value; pNotes(v); };
+    $('#ns', v).oninput = e => { nq = e.target.value; pNotes(v); const s = $('#ns'); s.focus(); s.setSelectionRange(nq.length, nq.length); };
+    $$('.ni', v).forEach(a => a.onclick = () => { curN = a.dataset.id; pNotes(v); });
+
+    if (activeItem) {
+      $('#dn-dl', v).onclick = () => downloadNote(activeItem.title, activeItem.content);
+      $('#dn-cp', v).onclick = async () => {
+        try {
+          const res = await api('/notes', 'POST', {
+            title: `[Class ${activeItem.classNum}] ${activeItem.title}`,
+            subject: activeItem.subject,
+            body: activeItem.content,
+            summary: activeItem.summary
+          });
+          S.notes.unshift(res);
+          await addXP(10, 'curriculum note imported');
+          toast('Saved to your personal notes!');
+        } catch(e) {
+          toast('Error importing note: ' + e.message);
+        }
+      };
+    }
+    return;
+  }
+
+  // Personal Notes tab
   const list = S.notes.filter(n => (!nf || n.subject === nf) && (n.title + ' ' + n.body).toLowerCase().includes(nq.toLowerCase())), n = S.notes.find(x => x.id == curN);
-  v.innerHTML = `<div class="split"><div class="card"><div class="row"><input id="ns" placeholder="🔍 Search notes" value="${esc(nq)}" style="flex:1"><button class="btn" id="nn">＋</button></div><select id="nfl"><option value="">All subjects</option>${subOpts(nf)}</select><div>${list.map(x => `<a class="ni ${x.id == curN ? 'on' : ''}" data-id="${x.id}"><b>${esc(x.title || 'Untitled')}</b><small>${esc(x.subject)} · ${esc(x.body.slice(0, 50))}</small></a>`).join('') || '<p class="mut">No notes found.</p>'}</div></div>
-  <div class="card">${n ? `<input id="et" value="${esc(n.title)}" placeholder="Title"><select id="es">${subOpts(n.subject)}</select><textarea id="eb" rows="12" placeholder="Write your notes...">${esc(n.body)}</textarea>${n.summary ? `<div class="sum"><b>✨ AI summary</b><p>${esc(n.summary)}</p></div>` : ''}<div class="row"><button class="btn" id="sv">Save</button><button class="btn amb" id="sm">✨ Summarize with AI</button><button class="btn ghost red" id="dn">Delete</button></div>` : '<p class="mut">Select a note or tap ＋ to create one.</p>'}</div></div>`;
+  v.innerHTML = `
+    <div class="row" style="margin-bottom:14px;gap:10px">
+      <div style="display:flex;gap:6px">
+        <button class="btn ${noteTab === 'library' ? '' : 'ghost'}" id="t-lib">📚 Classes 5-12 Study Notes</button>
+        <button class="btn ${noteTab === 'my' ? '' : 'ghost'}" id="t-my">📝 My Personal Notes</button>
+      </div>
+    </div>
+    <div class="split">
+      <div class="card">
+        <div class="row">
+          <input id="ns" placeholder="🔍 Search personal notes..." value="${esc(nq)}" style="flex:1">
+          <button class="btn" id="nn">＋</button>
+        </div>
+        <select id="nfl"><option value="">All subjects</option>${subOpts(nf)}</select>
+        <div style="max-height:65vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+          ${list.map(x => `<a class="ni ${x.id == curN ? 'on' : ''}" data-id="${x.id}"><b>${esc(x.title || 'Untitled')}</b><small>${esc(x.subject)} · ${esc(x.body.slice(0, 50))}</small></a>`).join('') || '<p class="mut">No personal notes found. Tap ＋ to create one or import from Classes 5-12.</p>'}
+        </div>
+      </div>
+      <div class="card">
+        ${n ? `
+          <input id="et" value="${esc(n.title)}" placeholder="Title">
+          <select id="es">${subOpts(n.subject)}</select>
+          <textarea id="eb" rows="12" placeholder="Write your notes...">${esc(n.body)}</textarea>
+          ${n.summary ? `<div class="sum"><b>✨ AI summary</b><p>${esc(n.summary)}</p></div>` : ''}
+          <div class="row">
+            <button class="btn" id="sv">Save</button>
+            <button class="btn amb" id="sm">✨ Summarize with AI</button>
+            <button class="btn sm" id="dn-my-dl">⬇ Download</button>
+            <button class="btn ghost red" id="dn">Delete</button>
+          </div>
+        ` : '<p class="mut">Select a note or tap ＋ to create one.</p>'}
+      </div>
+    </div>
+  `;
+
+  $('#t-lib', v).onclick = () => { noteTab = 'library'; curN = null; nq = ''; pNotes(v); };
+  $('#t-my', v).onclick = () => { noteTab = 'my'; pNotes(v); };
+
   const keep = async () => { 
       if (n) { 
           const title = $('#et').value, subject = $('#es').value, body = $('#eb').value;
@@ -417,6 +577,7 @@ function pNotes(v) {
   $$('.ni', v).forEach(a => a.onclick = async () => { await keep(); curN = a.dataset.id; pNotes(v); });
   if (n) {
     $('#sv', v).onclick = async () => { await keep(); toast('Note saved'); pNotes(v); };
+    $('#dn-my-dl', v).onclick = () => downloadNote(n.title || 'Note', n.body || '');
     $('#sm', v).onclick = async () => { 
         await keep(); 
         const summary = summarize(n.body); 
