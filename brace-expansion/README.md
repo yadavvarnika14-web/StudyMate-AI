@@ -8,6 +8,7 @@ as known from sh/bash, in JavaScript.
 
 ## Example
 
+{% raw %}
 ```js
 import { expand } from 'brace-expansion'
 
@@ -41,12 +42,15 @@ expand('{{A..C},{a..c}}')
 expand('ppp{,config,oe{,conf}}')
 // => ['ppp', 'pppconfig', 'pppoe', 'pppoeconf']
 ```
+{% endraw %}
 
 ## API
 
+{% raw %}
 ```js
 import { expand } from 'brace-expansion'
 ```
+{% endraw %}
 
 ### const expanded = expand(str, [options])
 
@@ -57,46 +61,56 @@ The `options` object can provide a `max` value to cap the number
 of expansions allowed. This is limited to `100_000` by default,
 to prevent DoS attacks.
 
+{% raw %}
 ```js
 const expansions = expand('{1..100}'.repeat(5), {
   max: 100,
 })
 // expansions.length will be 100, not 100^5
 ```
+{% endraw %}
 
 The `options` object can also provide a `maxLength` value to cap the
 total number of characters across all expansions. This is limited to
 `4_000_000` by default, to prevent memory exhaustion from inputs whose
 result count stays under `max` while each result grows very long.
 
+{% raw %}
 ```js
 const expansions = expand('{a,b}'.repeat(1500), {
   maxLength: 10_000,
 })
 ```
+{% endraw %}
 
 Valid expansions are:
 
+{% raw %}
 ```js
 ;/^(.*,)+(.+)?$/
 // {a,b,...}
 ```
+{% endraw %}
 
 A comma separated list of options, like `{a,b}` or `{a,{b,c}}` or `{,a,}`.
 
+{% raw %}
 ```js
 ;/^-?\d+\.\.-?\d+(\.\.-?\d+)?$/
 // {x..y[..incr]}
 ```
+{% endraw %}
 
 A numeric sequence from `x` to `y` inclusive, with optional increment.
 If `x` or `y` start with a leading `0`, all the numbers will be padded
 to have equal length. Negative numbers and backwards iteration work too.
 
+{% raw %}
 ```js
 ;/^-?\d+\.\.-?\d+(\.\.-?\d+)?$/
 // {x..y[..incr]}
 ```
+{% endraw %}
 
 An alphabetic sequence from `x` to `y` inclusive, with optional increment.
 `x` and `y` must be exactly one character, and if given, `incr` must be a
