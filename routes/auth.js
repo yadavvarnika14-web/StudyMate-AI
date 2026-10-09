@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 
 const router = express.Router();
-const SECRET = process.env.JWT_SECRET || 'studymate-secret-key';
+const SECRET = process.env.JWT_SECRET;
 
 // POST /api/auth/signup - Register a new user
 router.post('/signup', async (req, res) => {

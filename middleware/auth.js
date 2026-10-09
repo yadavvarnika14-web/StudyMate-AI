@@ -6,9 +6,9 @@ const jwt = require('jsonwebtoken');
 
 // The secret key used to sign and verify tokens.
 // In production, this should be an environment variable.
-const SECRET = process.env.JWT_SECRET || 'studymate-secret-key';
+const SECRET = process.env.JWT_SECRET;
 
-function authenticateToken(req, res, next) {
+  function authenticateToken(req, res, next) {
     // Check for the Authorization header
     const authHeader = req.headers['authorization'];
     
